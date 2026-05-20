@@ -612,7 +612,7 @@ The current backend is appropriate for a simple interface. Before heavier use, i
 
 ## How to run
 
-### Backend
+### Backend (requires authentication to a Google billing account)
 
 ``` 
 gcloud --version
