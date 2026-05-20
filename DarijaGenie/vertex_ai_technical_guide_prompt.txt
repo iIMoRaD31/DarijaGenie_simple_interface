@@ -1,0 +1,130 @@
+You are a senior cloud AI engineer and technical writer. Write a practical technical guide for software developers explaining how Google Cloud Vertex AI is used in the DarijaGenie chatbot backend, why this approach is preferable to plain direct API calls for production applications, and how to use Vertex AI efficiently when deploying an application for heavier usage.
+
+Audience:
+- Software developers who know backend development and APIs, but may be new to Vertex AI.
+- Developers should finish the guide understanding both the general Vertex AI workflow and the exact pattern used in this simple chatbot interface.
+
+Project context to describe accurately:
+- The backend is a Node.js Express service located in the DarijaGenie folder.
+- It uses the official `@google-cloud/vertexai` SDK.
+- The service creates a `VertexAI` client with configurable project and location values.
+- Environment variables used by the backend include:
+  - `PORT`, defaulting to `8080`.
+  - `VERTEX_PROJECT_ID`, with fallbacks to `GOOGLE_CLOUD_PROJECT`, `GCLOUD_PROJECT`, and `PROJECT_ID`.
+  - `VERTEX_LOCATION`, defaulting to `global`.
+  - `VERTEX_MODEL`, defaulting to `gemini-2.5-flash`.
+  - `VERTEX_API_ENDPOINT`, optional, for overriding the API endpoint.
+- The backend exposes:
+  - `GET /health`, returning a simple health response.
+  - `POST /chat`, accepting a JSON request body containing `history`.
+- The `history` field is validated before calling Vertex AI.
+- `history` must be an array alternating between assistant and user entries.
+- Assistant entries have this shape:
+  `{ "assistant": { "utterance": "...", "slots": { ... } } }`
+- User entries have this shape:
+  `{ "user": { "utterance": "..." } }`
+- On each `/chat` request, the backend loads `prompt_5.txt`.
+- `prompt_5.txt` is used as the model `systemInstruction`.
+- The backend appends the new user utterance to the existing dialogue history on the client side, then sends the complete updated history to the backend.
+- The backend serializes the complete `history` array and sends it to Gemini through Vertex AI as:
+  `INPUT:\n<JSON.stringify(history)>\nEnd of input.`
+- The backend calls `model.generateContent(requestPayload)`.
+- The model output is expected to contain two parts:
+  - `ASSISTANT:` with the Moroccan Darija assistant reply in Arabic script.
+  - `SLOT_STATE_JSON:` with valid JSON containing tracked restaurant-order slots and an action.
+- The backend parses the Gemini response, extracts the assistant text, extracts/normalizes the slot state JSON, and returns:
+  `{ "assistant": "...", "slots": { ... } }`
+- The backend includes defensive parsing for common model-output issues such as fenced JSON blocks, smart quotes, Python-style booleans/nulls, trailing commas, and JSON-like single quotes.
+- The backend includes a Dockerfile based on Node 18, exposes port `8080`, installs dependencies, copies the app, and starts with `node server.js`.
+
+Important: The guide should explain the implementation pattern, not just list code. Make it clear that this simple interface uses Vertex AI as the managed gateway to Gemini, while the application controls:
+- Prompt loading.
+- Conversation-state packaging.
+- Request validation.
+- Response parsing.
+- Slot-state management.
+- HTTP API shape for the frontend.
+
+Required guide goals:
+1. Explain what Vertex AI is in practical developer terms.
+2. Explain how Vertex AI differs from plain direct API calls to an LLM endpoint.
+3. Explain why Vertex AI is useful as a cloud AI service for production and heavier workloads.
+4. Explain exactly how DarijaGenie calls Gemini through Vertex AI.
+5. Explain the prompt-plus-history pattern used by DarijaGenie.
+6. Explain the role of `prompt_5.txt` as a system instruction.
+7. Explain how the dialogue history is appended and why this is necessary for stateless HTTP requests.
+8. Explain why structured outputs are useful for chatbot backends.
+9. Explain deployment considerations using Google Cloud services such as Cloud Run, IAM service accounts, Secret Manager, Cloud Logging, Cloud Monitoring, quotas, scaling, and regional/global endpoints.
+10. Provide developer-focused best practices for reliability, security, cost control, latency, observability, and prompt maintenance.
+
+Required comparison: Vertex AI vs plain API calls
+- Explain that plain API calls are usually simpler for prototypes but often require developers to manually handle authentication, access control, monitoring, deployment integration, quota management, logging, endpoint configuration, security boundaries, and production operations.
+- Explain that Vertex AI provides a managed Google Cloud service layer around model access, including integration with Google Cloud IAM, service accounts, centralized billing, quotas, logging/monitoring integrations, regional or global endpoint configuration, SDK support, model management, and deployment-friendly infrastructure.
+- Be balanced: mention that direct API calls can be acceptable for small prototypes, but Vertex AI is usually stronger when the application needs governance, production deployment, scaling, team access control, and cloud-native operations.
+
+Required cloud-service discussion:
+- Clearly state that Vertex AI is not only an API wrapper; it is a managed Google Cloud AI platform.
+- Discuss how this helps when deploying applications for heavy use:
+  - Cloud Run or container-based deployment can host the Express backend.
+  - Service accounts can authenticate securely without hard-coded credentials.
+  - IAM can restrict who or what can invoke Vertex AI.
+  - Quotas and rate limits help manage capacity and cost.
+  - Cloud Logging and Cloud Monitoring help debug and operate the app.
+  - Secret Manager can store sensitive configuration.
+  - Autoscaling infrastructure can absorb traffic spikes.
+  - Regional/global endpoint selection can affect latency, availability, and compliance.
+  - Centralized billing and project-level governance are easier for teams.
+
+Proposed outline for the guide:
+1. Title and short executive summary.
+2. Architecture overview of the DarijaGenie backend.
+3. What Vertex AI provides and why it matters.
+4. Backend setup: dependencies, environment variables, and client initialization.
+5. The `/chat` request lifecycle.
+6. How `prompt_5.txt` becomes the system instruction.
+7. How conversation history is appended and sent to Gemini.
+8. Structured response format: assistant text plus slot-state JSON.
+9. Response extraction and defensive parsing.
+10. Advantages of Vertex AI over plain API calls.
+11. Cloud deployment strategy for heavier usage.
+12. Production best practices and common pitfalls.
+13. Suggested improvements for the current interface.
+14. Short conclusion.
+
+Include code-level explanations using small illustrative snippets where useful, but do not dump the full source file. Explain snippets in plain language.
+
+Technical details to include in snippets or prose:
+- Importing and creating the Vertex AI client:
+  `const { VertexAI } = require("@google-cloud/vertexai");`
+  `const vertexAI = new VertexAI({ project: PROJECT_ID, location: LOCATION });`
+  `const model = vertexAI.getGenerativeModel({ model: MODEL_NAME });`
+- Request payload shape:
+  `systemInstruction: promptText`
+  `contents: [{ role: "user", parts: [{ text: "INPUT:\n...\nEnd of input." }] }]`
+- Calling the model:
+  `const result = await model.generateContent(requestPayload);`
+- Returning a frontend-friendly response:
+  `{ assistant, slots }`
+
+Suggested improvements to mention:
+- Cache `prompt_5.txt` instead of reading it from disk on every request, while supporting reloads during development.
+- Add authentication or API gateway protection before exposing `/chat` publicly.
+- Add request IDs and structured logging.
+- Add retry/backoff for transient Vertex AI failures.
+- Add token budgeting and history truncation/summarization for long conversations.
+- Add stricter schema validation for model output.
+- Consider Vertex AI safety settings and generation parameters.
+- Track latency, error rates, token usage, and cost.
+- Keep model name, project, location, and endpoint configurable by environment.
+
+Writing style:
+- Write in a clear, technical, developer-focused tone.
+- Be precise and avoid marketing language.
+- Use headings, short paragraphs, and concrete examples.
+- Do not claim that Vertex AI automatically solves every scaling problem; explain what the app and deployment platform still need to handle.
+- If a detail depends on the latest Google Cloud behavior, say that developers should verify the current official Vertex AI documentation.
+- Do not invent features that are not relevant to this backend.
+
+Final output:
+- Produce the full technical guide, not just the outline.
+- The guide should be self-contained and understandable without seeing the original source code.
